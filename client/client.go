@@ -14,7 +14,10 @@ import (
 	"github.com/skaji/go-nntp"
 )
 
-var aLongTimeAgo = time.Unix(1, 0)
+var (
+	aLongTimeAgo = time.Unix(1, 0)
+	noTimeout    = time.Time{}
+)
 
 // Client is an NNTP client.
 type Client struct {
@@ -27,20 +30,13 @@ func New(ctx context.Context, network, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{baseConn: conn, conn: textproto.NewConn(conn)}
-	if deadline, ok := ctx.Deadline(); ok {
-		c.SetDeadline(deadline)
-	}
-	stopWatcher := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			c.SetDeadline(aLongTimeAgo)
-		case <-stopWatcher:
-		}
-	}()
-	if _, _, err := c.conn.ReadCodeLine(200); err != nil {
-		c.Close()
+	textConn := textproto.NewConn(conn)
+	c := &Client{baseConn: conn, conn: textConn}
+	c.WithContext(ctx, func(*Client) {
+		_, _, err = textConn.ReadCodeLine(200)
+	})
+	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	return c, nil
@@ -53,6 +49,24 @@ func (c *Client) Close() error {
 
 func (c *Client) SetDeadline(t time.Time) error {
 	return c.baseConn.SetDeadline(t)
+}
+
+func (c *Client) WithContext(ctx context.Context, fn func(*Client)) {
+	if deadline, ok := ctx.Deadline(); ok {
+		c.SetDeadline(deadline)
+	} else {
+		c.SetDeadline(noTimeout)
+	}
+	stopWatcher := make(chan struct{})
+	defer close(stopWatcher)
+	go func() {
+		select {
+		case <-ctx.Done():
+			c.SetDeadline(aLongTimeAgo)
+		case <-stopWatcher:
+		}
+	}()
+	fn(c)
 }
 
 // Authenticate against an NNTP server using authinfo user/pass
