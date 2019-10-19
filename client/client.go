@@ -14,6 +14,8 @@ import (
 	"github.com/skaji/go-nntp"
 )
 
+var aLongTimeAgo = time.Unix(1, 0)
+
 // Client is an NNTP client.
 type Client struct {
 	baseConn net.Conn
@@ -25,7 +27,23 @@ func New(ctx context.Context, network, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{baseConn: conn, conn: textproto.NewConn(conn)}, nil
+	c := &Client{baseConn: conn, conn: textproto.NewConn(conn)}
+	if deadline, ok := ctx.Deadline(); ok {
+		c.SetDeadline(deadline)
+	}
+	stopWatcher := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			c.SetDeadline(aLongTimeAgo)
+		case <-stopWatcher:
+		}
+	}()
+	if _, _, err := c.conn.ReadCodeLine(200); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
 }
 
 // Close this client.
