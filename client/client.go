@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dustin/go-nntp"
+	"github.com/skaji/go-nntp"
 )
 
 // Client is an NNTP client.
