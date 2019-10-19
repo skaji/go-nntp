@@ -30,11 +30,10 @@ func New(ctx context.Context, network, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	textConn := textproto.NewConn(conn)
-	c := &Client{baseConn: conn, conn: textConn}
-	c.WithContext(ctx, func(*Client) {
-		_, _, err = textConn.ReadCodeLine(200)
-	})
+	c := &Client{baseConn: conn, conn: textproto.NewConn(conn)}
+	cancel := c.SetContext(ctx)
+	_, _, err = c.conn.ReadCodeLine(200)
+	cancel()
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -51,14 +50,13 @@ func (c *Client) SetDeadline(t time.Time) error {
 	return c.baseConn.SetDeadline(t)
 }
 
-func (c *Client) WithContext(ctx context.Context, fn func(*Client)) {
+func (c *Client) SetContext(ctx context.Context) func() {
 	if deadline, ok := ctx.Deadline(); ok {
 		c.SetDeadline(deadline)
 	} else {
 		c.SetDeadline(noTimeout)
 	}
 	stopWatcher := make(chan struct{})
-	defer close(stopWatcher)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -66,7 +64,7 @@ func (c *Client) WithContext(ctx context.Context, fn func(*Client)) {
 		case <-stopWatcher:
 		}
 	}()
-	fn(c)
+	return func() { close(stopWatcher) }
 }
 
 // Authenticate against an NNTP server using authinfo user/pass
