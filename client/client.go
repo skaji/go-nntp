@@ -2,51 +2,39 @@
 package nntpclient
 
 import (
+	"context"
 	"errors"
 	"io"
+	"net"
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-nntp"
 )
 
 // Client is an NNTP client.
 type Client struct {
-	conn   *textproto.Conn
-	Banner string
+	baseConn net.Conn
+	conn     *textproto.Conn
 }
 
-// New connects a client to an NNTP server.
-func New(net, addr string) (*Client, error) {
-	conn, err := textproto.Dial(net, addr)
+func New(ctx context.Context, network, addr string) (*Client, error) {
+	conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
 	if err != nil {
 		return nil, err
 	}
-
-	return connect(conn)
-}
-
-// NewConn wraps an existing connection, for example one opened with tls.Dial
-func NewConn(conn io.ReadWriteCloser) (*Client, error) {
-	return connect(textproto.NewConn(conn))
-}
-
-func connect(conn *textproto.Conn) (*Client, error) {
-	_, msg, err := conn.ReadCodeLine(200)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Client{
-		conn:   conn,
-		Banner: msg,
-	}, nil
+	return &Client{baseConn: conn, conn: textproto.NewConn(conn)}, nil
 }
 
 // Close this client.
 func (c *Client) Close() error {
-	return c.conn.Close()
+	return c.baseConn.Close()
+}
+
+func (c *Client) SetDeadline(t time.Time) error {
+	return c.baseConn.SetDeadline(t)
 }
 
 // Authenticate against an NNTP server using authinfo user/pass
