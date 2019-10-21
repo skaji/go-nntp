@@ -5,12 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"net/textproto"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/skaji/go-nntp"
@@ -52,29 +50,26 @@ func (c *Client) SetDeadline(t time.Time) error {
 	return c.baseConn.SetDeadline(t)
 }
 
-var count uint64
-
 func (c *Client) SetContext(ctx context.Context) func() {
-	atomic.AddUint64(&count, 1)
-	countCopy := count
 	if deadline, ok := ctx.Deadline(); ok {
-		log.Println(countCopy, "fist: c.SetDeadline(deadline)", deadline)
 		c.SetDeadline(deadline)
 	} else {
-		log.Println(countCopy, "fist: c.SetDeadline(noTimeout)", noTimeout)
 		c.SetDeadline(noTimeout)
 	}
-	stopWatcher := make(chan struct{})
+	stop := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
 		select {
 		case <-ctx.Done():
-			log.Println(countCopy, "c.SetDeadline(aLongTimeAgo)")
 			c.SetDeadline(aLongTimeAgo)
-		case <-stopWatcher:
-			log.Println(countCopy, "stopWatcher")
+		case <-stop:
 		}
+		close(done)
 	}()
-	return func() { close(stopWatcher) }
+	return func() {
+		close(stop)
+		<-done
+	}
 }
 
 // Authenticate against an NNTP server using authinfo user/pass
