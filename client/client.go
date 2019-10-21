@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/textproto"
 	"strconv"
@@ -60,8 +61,10 @@ func (c *Client) SetContext(ctx context.Context) func() {
 	go func() {
 		select {
 		case <-ctx.Done():
+			log.Println("c.SetDeadline(aLongTimeAgo)")
 			c.SetDeadline(aLongTimeAgo)
 		case <-stopWatcher:
+			log.Println("-stopWatcher")
 		}
 	}()
 	return func() { close(stopWatcher) }
